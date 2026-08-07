@@ -9,6 +9,10 @@ LIMIT     ?=
 export DICT_DEV_KIT_OBJ_DIR = ./objects
 BUNDLE = $(DICT_DEV_KIT_OBJ_DIR)/$(DICT_NAME).dictionary
 
+STAMP = $(BUNDLE)/Contents/Info.plist
+
+# xml/dict are real file targets so `make install` after a build does not redo
+# the 3-minute compile; the phony names stay as convenient aliases.
 .PHONY: all ddk fetch xml dict verify zip install uninstall test clean
 
 all: dict
@@ -24,14 +28,18 @@ fetch:
 		--pattern 'distribution.jsonl.gz' --pattern 'SHA256SUMS.txt' --clobber
 	grep distribution.jsonl.gz SHA256SUMS.txt | shasum -a 256 -c -
 
-xml: $(SOURCE)
+$(XML): $(SOURCE) $(SRC)/build_appledict.py
 	python3 $(SRC)/build_appledict.py $(SOURCE) -o $(XML) --source-tag $(TAG) $(if $(LIMIT),--limit $(LIMIT),)
 	xmllint --noout $(XML)
 
-dict: ddk xml
+xml: $(XML)
+
+$(STAMP): $(XML) $(SRC)/OpenDictionary.css $(SRC)/OpenDictionary.plist | ddk
 	"$(DDK)/bin/build_dict.sh" -v 10.11 "$(DICT_NAME)" $(XML) \
 		$(SRC)/OpenDictionary.css $(SRC)/OpenDictionary.plist
 	@$(MAKE) --no-print-directory verify
+
+dict: $(STAMP)
 
 verify:
 	@for f in Info.plist Resources/Body.data Resources/KeyText.data \

@@ -4,6 +4,8 @@
 84,212 条英汉学习词条装进 macOS 自带的「词典.app」，Spotlight、三指查词、
 右键「查询」全都能用。
 
+[Open Dictionary](image.png)
+
 ## 安装
 
 ```bash

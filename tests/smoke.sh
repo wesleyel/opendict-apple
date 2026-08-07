@@ -45,6 +45,10 @@ invalid = re.compile(
 )
 check("no characters illegal in XML 1.0", not invalid.search(x))
 check("control-char entry still rendered", "厨师" in x)
+# Upstream marks a nonexistent form with "-"; indexing it yields a null search
+# key (the DDK skips it noisily) and displaying it yields a bare dash.
+check("placeholder form not indexed", 'd:value="-"' not in x)
+check("real form alongside it still indexed", 'd:value="abandoned"' in x)
 PY
 
 echo "==> priority filter"

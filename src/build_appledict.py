@@ -101,6 +101,13 @@ def as_tags(v) -> list[str]:
     return []
 
 
+def is_word(s: str) -> bool:
+    """Wiktextract writes '-' (427 times in v2.0, plus one '#') where a form
+    does not exist. Indexing those yields a null search key, and displaying
+    them yields a bare dash in the entry body."""
+    return any(ch.isalnum() for ch in s)
+
+
 def region_of(pron: dict) -> str:
     tags = {t.lower().replace(" ", "-") for t in as_tags(pron)}
     for key in ("region", "accent", "variety"):
@@ -167,7 +174,7 @@ def render_pos_group(g: dict, min_priority: int) -> str:
     forms = []
     for f in g.get("forms") or []:
         t = as_text(f)
-        if not t:
+        if not is_word(t):
             continue
         tags = as_tags(f) if isinstance(f, dict) else []
         forms.append(f"{t}（{'/'.join(tags)}）" if tags else t)
@@ -269,7 +276,7 @@ def render_entry(e: dict, ident: str, min_priority: int) -> str:
     for g in e.get("pos_groups") or []:
         for f in g.get("forms") or []:
             t = as_text(f)
-            if t and t.lower() not in seen_forms:
+            if is_word(t) and t.lower() not in seen_forms:
                 seen_forms.add(t.lower())
                 idx.append(index(t, f"{t} → {headword}", 2))
 
