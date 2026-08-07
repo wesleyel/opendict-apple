@@ -115,6 +115,12 @@ pins the top-level fields, but the shapes of `forms`, `pronunciations` and
 key names and degrades silently rather than crashing. Run `--inspect` and tighten
 `render_pos_group()` / `render_relations()`.
 
+**`PCDATA invalid Char value N` from xmllint.** A control character illegal in
+XML 1.0 reached the output. `as_text()` is supposed to strip these — see
+[format.md](format.md#character-sanitization) — so a new one means text is
+bypassing that funnel. Any `huge text node` error further down the file is a
+cascade from the first one, not a separate problem.
+
 **A downloaded zip won't install.** Clear the quarantine flag:
 
 ```bash

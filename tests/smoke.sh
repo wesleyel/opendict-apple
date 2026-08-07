@@ -36,6 +36,15 @@ check("entry without meanings dropped", "emptyword" not in x)
 check("loose forms shape parsed", "tacks" in x)
 check("loose pronunciation shape parsed", "/tæk/" in x)
 check("loose relation shape parsed", "pin" in x)
+# One stray control character makes the whole 310 MB document unparseable,
+# and escaping does not help — they are illegal as raw codepoints. Fixture
+# en-ctrlchar-01 mirrors the single U+0014 that upstream v2.0 carries.
+import re
+invalid = re.compile(
+    "[^\u0009\u000a\u000d\u0020-\ud7ff\ue000-\ufffd\U00010000-\U0010ffff]"
+)
+check("no characters illegal in XML 1.0", not invalid.search(x))
+check("control-char entry still rendered", "厨师" in x)
 PY
 
 echo "==> priority filter"

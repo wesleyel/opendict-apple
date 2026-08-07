@@ -54,18 +54,35 @@ def open_maybe_gzip(path: str) -> io.TextIOBase:
 _TEXT_KEYS = ("text", "value", "form", "ipa", "word", "term", "headword", "note", "label")
 _TAG_KEYS = ("tags", "tag", "labels", "qualifiers")
 
+# XML 1.0 forbids most control characters, and escape() will not save us: they
+# are illegal as raw codepoints, not merely as markup. The upstream data is
+# almost clean (v2.0 carries a single U+0014 across 84k entries), but one such
+# character makes the whole document unparseable, so strip them at the single
+# point where data-derived text enters the document.
+_INVALID_XML = re.compile(
+    "[^\u0009\u000a\u000d\u0020-\ud7ff\ue000-\ufffd\U00010000-\U0010ffff]"
+)
+stripped_chars = 0
+
+
+def _clean(s: str) -> str:
+    global stripped_chars
+    cleaned = _INVALID_XML.sub("", s)
+    stripped_chars += len(s) - len(cleaned)
+    return cleaned.strip()
+
 
 def as_text(v) -> str:
     if v is None:
         return ""
     if isinstance(v, str):
-        return v.strip()
+        return _clean(v)
     if isinstance(v, (int, float)):
         return str(v)
     if isinstance(v, dict):
         for k in _TEXT_KEYS:
             if isinstance(v.get(k), str) and v[k].strip():
-                return v[k].strip()
+                return _clean(v[k])
         return ""
     if isinstance(v, list):
         return ", ".join(t for t in (as_text(i) for i in v) if t)
@@ -350,7 +367,11 @@ def main() -> int:
                 print(f"  … {written} entries", file=sys.stderr)
         out.write("</d:dictionary>\n")
 
-    print(f"read={read} written={written} skipped={skipped} -> {args.output}", file=sys.stderr)
+    print(
+        f"read={read} written={written} skipped={skipped} "
+        f"stripped_control_chars={stripped_chars} -> {args.output}",
+        file=sys.stderr,
+    )
     return 0
 
 

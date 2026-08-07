@@ -75,6 +75,29 @@ fields; `forms`, `pronunciations` and `relations` are looser. `as_text()` and
 names, and skip what they cannot read. The `tack` fixture feeds in bare strings
 and alternate key names to keep that path honest.
 
+## Character sanitization
+
+XML 1.0 forbids most control characters as raw codepoints, and escaping does
+not rescue them — `&#20;` is just as illegal as the byte. Upstream v2.0 carries
+exactly one such character (U+0014) across all 84,212 entries, and that single
+character makes the entire 310 MB document unparseable.
+
+`_clean()` strips them inside `as_text()`, the one funnel every data-derived
+string passes through, so element text and attribute values are both covered.
+The count is reported on the converter's summary line:
+
+```
+read=84212 written=84212 skipped=0 stripped_control_chars=1 -> OpenDictionary.xml
+```
+
+A sudden jump in that number means upstream changed something; investigate
+rather than ignore it. Fixture `en-ctrlchar-01` pins the behaviour.
+
+Note that `xmllint` reports the cascade, not the cause. Losing sync on the
+illegal character makes it accumulate the rest of the document as one text node
+and report `xmlSAX2Characters: huge text node` thousands of lines later. Fix the
+first error and the second disappears.
+
 ## Attribution front matter
 
 `src/build_appledict.py` emits a first entry with id `front_back_matter`, referenced
