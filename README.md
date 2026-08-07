@@ -4,7 +4,7 @@
 84,212 条英汉学习词条装进 macOS 自带的「词典.app」，Spotlight、三指查词、
 右键「查询」全都能用。
 
-[Open Dictionary](image.png)
+![Open Dictionary](docs/image.png)
 
 ## 安装
 
@@ -29,7 +29,7 @@ make install   # 转换 → 编译 → 装进 ~/Library/Dictionaries
 
 ## 文档
 
-| | |
+| doc | description |
 |---|---|
 | [docs/build.md](docs/build.md) | 构建流程、依赖、参数、排错 |
 | [docs/ci.md](docs/ci.md) | GitHub Actions 与发版 |
