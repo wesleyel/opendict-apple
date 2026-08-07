@@ -1,0 +1,225 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      source_tag:
+        description: "ahpxex/open-dictionary release tag to build from"
+        default: "v2.0"
+      limit:
+        description: "Entry cap for trial builds (0 = all ~84k)"
+        default: "0"
+      publish:
+        description: "Create a release and update the Homebrew cask"
+        type: boolean
+        default: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  DICT_NAME: Open Dictionary
+  SOURCE_TAG: ${{ inputs.source_tag || 'v2.0' }}
+
+jobs:
+  # Fixture-driven, no upstream download. Runs on every push and PR.
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python3 -m compileall -q src/build_appledict.py scripts/update_cask.py
+      - run: sudo apt-get install -y --no-install-recommends libxml2-utils
+      - run: tests/smoke.sh
+
+  # Same fixture, but compiled with the real DDK. macOS minutes cost 10x on
+  # private repos, so this is kept off the PR path.
+  smoke:
+    if: github.event_name != 'pull_request'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: nanoskript/dictionary-development-kit
+          path: ddk
+      - run: tests/smoke.sh --build
+
+  # Pure-Python conversion of the full 84k-entry artifact — no macOS needed.
+  convert:
+    if: github.event_name == 'workflow_dispatch'
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache upstream artifact
+        id: cache-src
+        uses: actions/cache@v4
+        with:
+          path: distribution.jsonl.gz
+          key: opendict-${{ env.SOURCE_TAG }}
+
+      - name: Download and verify distribution.jsonl.gz
+        if: steps.cache-src.outputs.cache-hit != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$SOURCE_TAG" --repo ahpxex/open-dictionary \
+            --pattern 'distribution.jsonl.gz' --pattern 'SHA256SUMS.txt'
+          grep 'distribution.jsonl.gz' SHA256SUMS.txt | sha256sum -c -
+
+      - name: Convert JSONL to Apple Dictionary XML
+        run: |
+          python3 src/build_appledict.py distribution.jsonl.gz -o OpenDictionary.xml \
+            --source-tag "$SOURCE_TAG" \
+            ${{ inputs.limit != '0' && format('--limit {0}', inputs.limit) || '' }}
+          xmllint --noout OpenDictionary.xml
+          ls -lh OpenDictionary.xml
+          gzip -6 OpenDictionary.xml
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: appledict-xml
+          path: OpenDictionary.xml.gz
+          retention-days: 1
+
+  # macOS only for the DDK compile, which is the expensive runner.
+  package:
+    needs: convert
+    runs-on: macos-latest
+    timeout-minutes: 240
+    outputs:
+      sha256: ${{ steps.checksum.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: appledict-xml
+      - run: gunzip OpenDictionary.xml.gz
+
+      # Apple ships the DDK only inside "Additional Tools for Xcode", behind an
+      # Apple ID login. This mirror carries universal (x86_64 + arm64) binaries,
+      # so it runs natively on the arm64 runner without Rosetta. Nothing from
+      # the DDK ends up in the published artifact — see LICENSE-DATA.md.
+      - uses: actions/checkout@v4
+        with:
+          repository: nanoskript/dictionary-development-kit
+          path: ddk
+
+      - name: Compile .dictionary bundle
+        env:
+          DICT_DEV_KIT_OBJ_DIR: ./objects
+        run: |
+          chmod +x ddk/bin/*
+          ./ddk/bin/build_dict.sh -v 10.11 "$DICT_NAME" OpenDictionary.xml \
+            src/OpenDictionary.css src/OpenDictionary.plist
+
+      - name: Verify bundle
+        run: |
+          C="objects/$DICT_NAME.dictionary/Contents"
+          for f in Info.plist Resources/Body.data Resources/KeyText.data \
+                   Resources/KeyText.index Resources/EntryID.index \
+                   Resources/DefaultStyle.css; do
+            test -s "$C/$f" || { echo "missing $f"; exit 1; }
+          done
+          plutil -lint "$C/Info.plist"
+          grep -q front_back_matter "$C/Info.plist" || { echo "attribution front matter lost"; exit 1; }
+          du -sh "objects/$DICT_NAME.dictionary"
+
+      - name: Zip and checksum
+        id: checksum
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent \
+            "objects/$DICT_NAME.dictionary" OpenDictionary.dictionary.zip
+          sum=$(shasum -a 256 OpenDictionary.dictionary.zip | cut -d' ' -f1)
+          echo "sha256=$sum" >> "$GITHUB_OUTPUT"
+          echo "$sum  OpenDictionary.dictionary.zip" > SHA256SUMS.txt
+          ls -lh OpenDictionary.dictionary.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenDictionary.dictionary
+          path: |
+            OpenDictionary.dictionary.zip
+            SHA256SUMS.txt
+
+  publish:
+    if: inputs.publish
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: OpenDictionary.dictionary
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA256: ${{ needs.package.outputs.sha256 }}
+          REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          tag="appledict-$SOURCE_TAG"
+          cat > notes.md <<EOF
+          Apple Dictionary build of \`$SOURCE_TAG\` from
+          https://github.com/ahpxex/open-dictionary
+
+          \`\`\`
+          brew tap $OWNER/dict https://github.com/$REPO
+          brew install --cask open-dictionary
+          \`\`\`
+
+          Or by hand: unzip, move \`Open Dictionary.dictionary\` into
+          \`~/Library/Dictionaries/\`, then enable it in Dictionary.app > Settings.
+          A zip downloaded in a browser is quarantined — clear it with
+          \`xattr -dr com.apple.quarantine 'Open Dictionary.dictionary'\`.
+
+          sha256: \`$SHA256\`
+
+          Dictionary data is licensed CC BY-SA 4.0 and derives from Wiktionary;
+          redistribution must keep the attribution and the same licence.
+          See LICENSE-DATA.md.
+          EOF
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" OpenDictionary.dictionary.zip SHA256SUMS.txt --clobber
+            gh release edit "$tag" --notes-file notes.md
+          else
+            gh release create "$tag" --title "Apple Dictionary $SOURCE_TAG" \
+              --notes-file notes.md OpenDictionary.dictionary.zip SHA256SUMS.txt
+          fi
+
+      - name: Update Homebrew cask
+        env:
+          SHA256: ${{ needs.package.outputs.sha256 }}
+        run: |
+          python3 scripts/update_cask.py \
+            --repo "${{ github.repository }}" \
+            --version "${SOURCE_TAG#v}" \
+            --sha256 "$SHA256"
+
+      - name: Commit cask
+        run: |
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add Casks/open-dictionary.rb
+          git diff --staged --quiet && exit 0
+          git commit -m "cask: open-dictionary ${SOURCE_TAG#v}"
+          git push

@@ -1,0 +1,158 @@
+@charset "UTF-8";
+
+d|entry {
+	font-family: -apple-system, "PingFang SC", sans-serif;
+	line-height: 1.5;
+}
+
+h1.hw {
+	font-size: 1.5em;
+	margin: 0 0 .2em 0;
+}
+
+.summary {
+	color: #555;
+	margin-bottom: .4em;
+}
+
+.hook {
+	background: rgba(255, 204, 0, .12);
+	border-left: 3px solid rgba(255, 180, 0, .8);
+	padding: .35em .6em;
+	margin: .5em 0 .8em 0;
+	border-radius: 3px;
+}
+
+.label {
+	display: block;
+	font-size: .78em;
+	font-weight: 600;
+	letter-spacing: .05em;
+	color: #a07500;
+	margin-bottom: .15em;
+}
+
+.posgroup {
+	margin: 1em 0;
+}
+
+h2.pos {
+	font-size: 1em;
+	font-style: italic;
+	color: #0b6cbf;
+	margin: 0 0 .15em 0;
+	border-bottom: 1px solid rgba(0, 0, 0, .1);
+}
+
+.pron {
+	font-family: "Times New Roman", serif;
+	color: #666;
+	font-size: .95em;
+}
+
+.possum,
+.forms,
+.usage {
+	color: #444;
+	font-size: .92em;
+	margin: .15em 0;
+}
+
+.forms {
+	color: #777;
+}
+
+ol.senses {
+	margin: .4em 0 0 0;
+	padding-left: 1.4em;
+}
+
+li.sense {
+	margin-bottom: .55em;
+}
+
+li.sense.rare {
+	opacity: .72;
+}
+
+.prio {
+	display: inline-block;
+	font-size: .68em;
+	padding: 0 .35em;
+	margin-right: .35em;
+	border-radius: 3px;
+	vertical-align: .12em;
+	color: #fff;
+}
+
+.prio.core {
+	background: #d9534f;
+}
+
+.prio.common {
+	background: #4a90d9;
+}
+
+.prio.rare {
+	background: #999;
+}
+
+.gloss {
+	font-weight: 600;
+}
+
+.expl {
+	margin-top: .1em;
+}
+
+.musage {
+	color: #666;
+	font-size: .9em;
+	margin-top: .15em;
+}
+
+ul.examples {
+	list-style: none;
+	margin: .3em 0 0 0;
+	padding-left: .8em;
+	border-left: 2px solid rgba(0, 0, 0, .12);
+}
+
+ul.examples li {
+	margin-bottom: .25em;
+}
+
+.en {
+	display: block;
+	font-style: italic;
+	color: #333;
+}
+
+.tr {
+	display: block;
+	color: #777;
+	font-size: .9em;
+}
+
+.rel,
+.ety,
+.notes {
+	font-size: .9em;
+	color: #555;
+	margin-top: .6em;
+}
+
+.notes ul {
+	margin: .2em 0;
+	padding-left: 1.2em;
+}
+
+@media (prefers-color-scheme: dark) {
+	.summary { color: #bbb; }
+	.label { color: #e0b040; }
+	h2.pos { color: #6cb6ff; border-bottom-color: rgba(255, 255, 255, .15); }
+	.pron, .possum, .usage { color: #b8b8b8; }
+	.forms, .musage, .tr, .rel, .ety, .notes { color: #9a9a9a; }
+	.en { color: #ddd; }
+	ul.examples { border-left-color: rgba(255, 255, 255, .18); }
+}

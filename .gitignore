@@ -1,0 +1,17 @@
+# Dictionary Development Kit, cloned on demand by `make ddk`
+ddk/
+
+# Build output
+objects/
+OpenDictionary.xml
+OpenDictionary.xml.gz
+OpenDictionary.dictionary.zip
+
+# Upstream data artifact and its checksums
+distribution.jsonl
+distribution.jsonl.gz
+SHA256SUMS.txt
+
+__pycache__/
+*.pyc
+.DS_Store
