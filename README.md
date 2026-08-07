@@ -7,13 +7,13 @@
 ## 安装
 
 ```bash
-brew tap wesleyel/dict https://github.com/wesleyel/open-dictionary-apple
+brew tap wesleyel/dict https://github.com/wesleyel/opendict-apple
 brew install --cask open-dictionary
 ```
 
 装完在 **词典.app → 设置** 里勾选 *Open Dictionary* 启用。
 
-不用 Homebrew 就到 [Releases](https://github.com/wesleyel/open-dictionary-apple/releases)
+不用 Homebrew 就到 [Releases](https://github.com/wesleyel/opendict-apple/releases)
 下 zip，解压后把 `Open Dictionary.dictionary` 拖进 `~/Library/Dictionaries/`。
 
 ## 自己构建

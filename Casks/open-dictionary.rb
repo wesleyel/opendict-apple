@@ -3,12 +3,12 @@ cask "open-dictionary" do
   version "2.0"
   sha256 "0000000000000000000000000000000000000000000000000000000000000000"
 
-  url "https://github.com/wesleyel/open-dictionary-apple/releases/download/appledict-v#{version}/OpenDictionary.dictionary.zip",
-      verified: "github.com/wesleyel/open-dictionary-apple/"
+  url "https://github.com/wesleyel/opendict-apple/releases/download/appledict-v#{version}/OpenDictionary.dictionary.zip",
+      verified: "github.com/wesleyel/opendict-apple/"
   name "Open Dictionary"
   name "Open Dictionary 英汉学习词典"
   desc "English-Chinese learner dictionary for Dictionary.app, built from Wiktionary"
-  homepage "https://github.com/wesleyel/open-dictionary-apple"
+  homepage "https://github.com/wesleyel/opendict-apple"
 
   livecheck do
     url :url

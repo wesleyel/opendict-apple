@@ -65,7 +65,7 @@ replaces it.
 repo does not have to be named `homebrew-*`:
 
 ```bash
-brew tap wesleyel/dict https://github.com/wesleyel/open-dictionary-apple
+brew tap wesleyel/dict https://github.com/wesleyel/opendict-apple
 ```
 
 ## Release shape
