@@ -61,30 +61,41 @@ jobs:
             --pattern 'distribution.jsonl.gz' --pattern 'SHA256SUMS.txt'
           grep 'distribution.jsonl.gz' SHA256SUMS.txt | sha256sum -c -
 
+      # A cache key cannot contain a comma, which `uk,us` does. Inputs are also
+      # kept out of the run-block text and passed as env instead.
+      - name: Normalize inputs
+        env:
+          ACCENTS: ${{ inputs.accents }}
+          LIMIT: ${{ inputs.limit }}
+        run: |
+          echo "ACCENTS=$ACCENTS" >> "$GITHUB_ENV"
+          # Commas are rejected outright; spaces would be accepted and then
+          # quietly split the key, so reduce to a single safe separator.
+          echo "ACCENTS_KEY=$(printf '%s' "$ACCENTS" | sed 's/[^a-zA-Z0-9]\{1,\}/-/g')" >> "$GITHUB_ENV"
+          if [ "$LIMIT" != "0" ]; then echo "LIMIT_FLAG=--limit $LIMIT" >> "$GITHUB_ENV"; fi
+
       # restore-keys lets an interrupted run pick up where the last one stopped
       # rather than re-requesting everything from the source.
       - name: Cache pronunciation clips
         uses: actions/cache@v4
         with:
           path: audio_files
-          key: audio-${{ env.SOURCE_TAG }}-${{ inputs.accents }}-${{ github.run_id }}
+          key: audio-${{ env.SOURCE_TAG }}-${{ env.ACCENTS_KEY }}-${{ github.run_id }}
           restore-keys: |
-            audio-${{ env.SOURCE_TAG }}-${{ inputs.accents }}-
+            audio-${{ env.SOURCE_TAG }}-${{ env.ACCENTS_KEY }}-
             audio-${{ env.SOURCE_TAG }}-
 
       - name: Fetch clips
         run: |
           python3 scripts/fetch_audio.py distribution.jsonl.gz \
-            --out audio_files --accents '${{ inputs.accents }}' \
-            ${{ inputs.limit != '0' && format('--limit {0}', inputs.limit) || '' }}
+            --out audio_files --accents "$ACCENTS" $LIMIT_FLAG
           echo "clips: $(find audio_files/OtherResources -name '*.mp3' | wc -l)"
           du -sh audio_files
 
       - name: Convert JSONL to Apple Dictionary XML
         run: |
           python3 src/build_appledict.py distribution.jsonl.gz -o OpenDictionaryAudio.xml \
-            --source-tag "$SOURCE_TAG" --audio-manifest audio_files/manifest.tsv \
-            ${{ inputs.limit != '0' && format('--limit {0}', inputs.limit) || '' }}
+            --source-tag "$SOURCE_TAG" --audio-manifest audio_files/manifest.tsv $LIMIT_FLAG
           xmllint --noout OpenDictionaryAudio.xml
           gzip -6 OpenDictionaryAudio.xml
 
