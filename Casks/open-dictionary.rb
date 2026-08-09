@@ -18,6 +18,8 @@ cask "open-dictionary" do
 
   depends_on macos: :catalina
 
+  conflicts_with cask: "open-dictionary-audio"
+
   dictionary "Open Dictionary.dictionary"
 
   caveats <<~EOS

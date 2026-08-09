@@ -11,6 +11,10 @@ Target: Apple's Dictionary XML, compiled by the DDK.
   <d:index d:value="knot"  d:title="knot"/>
   <d:index d:value="knots" d:title="knots → knot" d:priority="2"/>
   <h1 class="hw">knot</h1>
+  <div class="audio">                        <!-- audio variant only -->
+    <a class="say uk" href="Audio/3f/knot-3f52…_uk.mp3" onclick="…">🔊英</a>
+    <a class="say us" href="Audio/3f/knot-3f52…_us.mp3" onclick="…">🔊美</a>
+  </div>
   <div class="summary">…headword_summary…</div>
   <div class="hook"><span class="label">记忆主线</span>…memory_hook…</div>
   <div class="posgroup">
@@ -97,6 +101,78 @@ Note that `xmllint` reports the cascade, not the cause. Losing sync on the
 illegal character makes it accumulate the rest of the document as one text node
 and report `xmlSAX2Characters: huge text node` thousands of lines later. Fix the
 first error and the second disappears.
+
+## Pronunciation audio
+
+Two variants ship from the same source: the plain dictionary, and one with
+recordings bundled. `--audio-manifest` is what separates them — without it the
+converter emits no audio markup at all.
+
+### Why the clips are bundled rather than streamed
+
+Dictionary.app's entry view is a WebKit view with **no outbound network
+access**. Measured with a probe dictionary on macOS 15:
+
+| | result |
+|---|---|
+| inline `<script>` | runs |
+| `setTimeout` / async callbacks | fire |
+| remote `<img>` | `onerror` |
+| `XMLHttpRequest` to any host | `onerror` |
+| remote `<audio>` | `MEDIA_ERR_SRC_NOT_SUPPORTED` (code 4), `play()` rejects `NotSupportedError` |
+| `data:` URI `<audio>` | plays |
+| bundled `Audio/…mp3` (relative) | plays |
+
+So a URL pointing at an online pronunciation endpoint renders a button that can
+never make a sound. Relative paths resolve against `Contents/Resources/`, which
+is where `build_dict.sh` copies `OtherResources/`.
+
+### Two rules the markup has to respect
+
+**The player lives on `window`.** An `Audio` referenced only by a local
+variable is collectable while `play()` is still loading the file, which
+produces a button that works intermittently:
+
+```js
+var w=window;if(!w._dp){w._dp=new Audio()}w._dp.src=this.href;w._dp.play();return false;
+```
+
+**Handlers must be entity-free.** Dictionary.app parses stored entry bodies as
+HTML, not XHTML. Attribute values are entity-decoded, but a `<script>` body is
+raw text, so an `&amp;` written to keep the XML well-formed reaches the JS
+parser literally and kills the whole script. Keep `&` and `<` out of anything
+executable — the smoke test asserts this.
+
+### Coverage
+
+Clips are keyed by the word, so one pair serves every pos_group of an entry.
+About a third of upstream headwords have no recording — multi-word phrases and
+hyphenated compounds mostly — and the source answers those with a deterministic
+HTTP 500. `scripts/fetch_audio.py` records what it actually got in
+`manifest.tsv`, and `render_audio()` emits a button only for clips listed there,
+so a missing recording is a missing button rather than a dead one. Entries with
+one accent only get one button.
+
+### Layout
+
+```
+audio_files/                       # staging root, gitignored
+├── OtherResources/                # copied wholesale into Contents/Resources/
+│   └── Audio/<2 hex>/<slug>-<sha1[:8]>_<uk|us>.mp3
+├── manifest.tsv                   # headword \t uk path \t us path
+└── misses.txt                     # headwords with no recording
+```
+
+The manifest sits **outside** `OtherResources/` on purpose: the DDK copies that
+directory wholesale, so anything left inside it ships to users — a 7 MB index of
+the clip tree included. Paths recorded in the manifest are bundle-relative
+(`Audio/…`), which is exactly what the entry markup needs.
+
+The hash disambiguates: the slug is lowercased, so `US` and `us` would collide
+on a case-insensitive volume, and it is truncated at 32 characters. Its first
+byte shards the tree so no directory holds more than a few hundred of the
+~110k files. Only `Audio/` is copied into the bundle; the manifest is build
+input, not bundle content.
 
 ## Attribution front matter
 

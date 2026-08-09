@@ -37,7 +37,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: python3 -m compileall -q src/build_appledict.py scripts/update_cask.py
+      - run: python3 -m compileall -q src/build_appledict.py scripts/update_cask.py scripts/fetch_audio.py
       - run: sudo apt-get install -y --no-install-recommends libxml2-utils
       - run: tests/smoke.sh
 
@@ -185,9 +185,12 @@ jobs:
           Apple Dictionary build of \`$SOURCE_TAG\` from
           https://github.com/ahpxex/open-dictionary
 
+          Two variants, same dictionary — install one or the other:
+
           \`\`\`
           brew tap $OWNER/dict https://github.com/$REPO
-          brew install --cask open-dictionary
+          brew install --cask open-dictionary         # ~90 MB, no audio
+          brew install --cask open-dictionary-audio   # with bundled pronunciation
           \`\`\`
 
           Or by hand: unzip, move \`Open Dictionary.dictionary\` into

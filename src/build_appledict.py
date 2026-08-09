@@ -20,6 +20,14 @@ import re
 import sys
 from xml.sax.saxutils import escape, quoteattr
 
+# Converter version, independent of the dictionary data version (which comes
+# from --source-tag). Bump it whenever the rendered markup changes, so a bundle
+# in the wild can be traced back to the code that produced it: it is stamped
+# into an XML comment, the front matter page and the run summary.
+#   1.0.0  first tagged converter; output as shipped with data v2.0
+#   1.1.0  optional bundled US/UK pronunciation audio (--audio-manifest)
+__version__ = "1.1.0"
+
 NS = (
     '<d:dictionary xmlns="http://www.w3.org/1999/xhtml" '
     'xmlns:d="http://www.apple.com/DTDs/DictionaryService-1.0.rng">'
@@ -36,6 +44,19 @@ FRONT_MATTER_TITLE = "Open Dictionary"
 # Only these tags are treated as region markers on pronunciations.
 US_TAGS = {"us", "general-american", "generalamerican", "ga", "american"}
 UK_TAGS = {"uk", "received-pronunciation", "receivedpronunciation", "rp", "british"}
+
+# Pronunciation audio. Upstream ships IPA text but no audio, so clips are
+# fetched by scripts/fetch_audio.py and bundled — a remote URL is not an option:
+# Dictionary.app's entry WebView has no outbound network access, and a remote
+# <audio> fails with MEDIA_ERR_SRC_NOT_SUPPORTED (code 4). Clips inside the
+# bundle play fine, resolved relative to Contents/Resources/.
+# (manifest column, button label)
+AUDIO_VARIANTS = (("uk", "英"), ("us", "美"))
+# Kept on `window` deliberately: an Audio held only by a local would be a
+# candidate for collection while play() is still loading the file.
+AUDIO_ONCLICK = (
+    "var w=window;if(!w._dp){w._dp=new Audio()}w._dp.src=this.href;w._dp.play();return false;"
+)
 
 
 def open_maybe_gzip(path: str) -> io.TextIOBase:
@@ -142,6 +163,51 @@ def el(tag: str, text: str, cls: str = "") -> str:
     return f"<{tag}{attr}>{escape(text)}</{tag}>"
 
 
+def load_audio_manifest(path: str) -> dict[str, dict[str, str]]:
+    """headword -> {"uk": relative path, "us": relative path}, empty when absent.
+
+    Written by scripts/fetch_audio.py. Roughly a third of upstream headwords
+    have no recording, so membership here is what decides whether an entry gets
+    a button at all — the alternative is a button that plays nothing.
+    """
+    manifest: dict[str, dict[str, str]] = {}
+    with open(path, encoding="utf-8") as fh:
+        for row in fh:
+            parts = row.rstrip("\n").split("\t")
+            if len(parts) != 3 or not parts[0]:
+                continue
+            clips = {a: p for a, p in (("uk", parts[1]), ("us", parts[2])) if p}
+            if clips:
+                manifest[parts[0]] = clips
+    return manifest
+
+
+def render_audio(headword: str, manifest: dict[str, dict[str, str]] | None) -> str:
+    """One 英/美 button pair per entry, keyed by the headword.
+
+    Audio belongs to the entry rather than to a pos_group: clips are keyed by
+    the word, so `record` the noun and `record` the verb share one recording.
+    """
+    if not manifest or not is_word(headword):
+        return ""
+    clips = manifest.get(headword)
+    if not clips:
+        return ""
+    buttons = []
+    for accent, label in AUDIO_VARIANTS:
+        rel = clips.get(accent)
+        if not rel:
+            continue
+        buttons.append(
+            f'<a class="say {accent}" href={quoteattr(rel)}'
+            f' onclick={quoteattr(AUDIO_ONCLICK)} title={quoteattr(label + "式发音")}>'
+            f'<span class="ico">🔊</span>{label}</a>'
+        )
+    if not buttons:
+        return ""
+    return '<div class="audio">' + "".join(buttons) + "</div>"
+
+
 def index(value: str, title: str, priority: int = 0) -> str:
     if not value:
         return ""
@@ -225,13 +291,16 @@ def render_relations(g: dict) -> str:
     return el("div", "　".join(rows), "rel")
 
 
-def render_entry(e: dict, ident: str, min_priority: int) -> str:
+def render_entry(
+    e: dict, ident: str, min_priority: int, audio: dict[str, dict[str, str]] | None = None
+) -> str:
     headword = as_text(e.get("headword"))
     if not headword:
         return ""
 
     body = []
     body.append(el("h1", headword, "hw"))
+    body.append(render_audio(headword, audio))
     body.append(el("div", as_text(e.get("headword_summary")), "summary"))
     hook = as_text(e.get("memory_hook"))
     if hook:
@@ -288,16 +357,26 @@ def render_entry(e: dict, ident: str, min_priority: int) -> str:
     )
 
 
-def render_front_matter(source_tag: str) -> str:
+def render_front_matter(source_tag: str, audio_clips: int = 0) -> str:
     link = "https://github.com/ahpxex/open-dictionary"
     cc = "https://creativecommons.org/licenses/by-sa/4.0/"
+    meta = [f"数据版本 {source_tag}"] if source_tag else []
+    meta.append(f"转换工具 {__version__}")
+    meta.append(f"含发音（{audio_clips} 条）" if audio_clips else "不含发音")
+    audio_row = ""
+    if audio_clips:
+        audio_row = (
+            '<li>发音音频取自 <a href="https://dict.youdao.com/">有道词典</a> 发音接口，'
+            "随词典打包，离线可用；版权归原提供方所有。</li>"
+        )
     rows = [
         f'<h1 class="hw">{escape(FRONT_MATTER_TITLE)}</h1>',
-        el("div", f"数据版本 {source_tag}" if source_tag else "", "summary"),
+        el("div", " · ".join(meta), "summary"),
         '<div class="notes"><span class="label">来源</span><ul>',
         f'<li>词条数据由 <a href="{link}">ahpxex/open-dictionary</a> 生成，'
         "以 Wiktextract 快照为源，经词频筛选与 LLM 结构化生成。</li>",
         "<li>原始内容 © Wiktionary 贡献者。</li>",
+        audio_row,
         f'<li>词典数据以 <a href="{cc}">CC BY-SA 4.0</a> 授权；'
         "再分发或二次加工须以相同许可发布并保留署名。</li>",
         "<li>转换脚本 MIT 授权。Dictionary Development Kit 为 Apple 所有，"
@@ -327,8 +406,14 @@ def main() -> int:
         help="lowest sense priority to include (default: rare = everything)",
     )
     ap.add_argument("--source-tag", default="", help="upstream release tag, shown on the front matter page")
+    ap.add_argument(
+        "--audio-manifest",
+        default="",
+        help="manifest.tsv from scripts/fetch_audio.py; enables bundled pronunciation buttons",
+    )
     ap.add_argument("--no-front-matter", action="store_true", help="omit the attribution front matter entry")
     ap.add_argument("--inspect", action="store_true", help="dump the first entry's raw JSON and exit")
+    ap.add_argument("--version", action="version", version=f"build_appledict {__version__}")
     args = ap.parse_args()
 
     if args.inspect:
@@ -343,13 +428,32 @@ def main() -> int:
 
     min_priority = PRIORITY_ORDER[args.min_priority]
     seen_ids: set[str] = set()
-    written = read = skipped = 0
+    written = read = skipped = audio_used = 0
+
+    audio: dict[str, dict[str, str]] | None = None
+    if args.audio_manifest:
+        audio = load_audio_manifest(args.audio_manifest)
+        clips = sum(len(v) for v in audio.values())
+        print(
+            f"audio manifest: {len(audio)} headwords, {clips} clips",
+            file=sys.stderr,
+        )
+
+    # `--` cannot appear inside an XML comment, so a stray one in the tag would
+    # make the document unparseable.
+    stamp = f"build_appledict {__version__}"
+    if args.source_tag:
+        stamp += f" · data {args.source_tag}"
+    stamp += " · audio " + ("bundled" if audio else "none")
+    stamp = _clean(stamp).replace("--", "-")
 
     with open_maybe_gzip(args.input) as fh, open(args.output, "w", encoding="utf-8") as out:
         out.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+        out.write(f"<!-- generated by {stamp} -->\n")
         out.write(NS + "\n")
         if not args.no_front_matter:
-            out.write(render_front_matter(args.source_tag))
+            clip_count = sum(len(v) for v in audio.values()) if audio else 0
+            out.write(render_front_matter(args.source_tag, clip_count))
             seen_ids.add(FRONT_MATTER_ID)
         for line in fh:
             line = line.strip()
@@ -362,10 +466,12 @@ def main() -> int:
                 skipped += 1
                 continue
             ident = make_id(as_text(e.get("entry_id")) or as_text(e.get("headword")), seen_ids)
-            xml = render_entry(e, ident, min_priority)
+            xml = render_entry(e, ident, min_priority, audio)
             if xml:
                 out.write(xml)
                 written += 1
+                if 'class="audio"' in xml:
+                    audio_used += 1
             else:
                 skipped += 1
             if args.limit and written >= args.limit:
@@ -375,8 +481,9 @@ def main() -> int:
         out.write("</d:dictionary>\n")
 
     print(
-        f"read={read} written={written} skipped={skipped} "
-        f"stripped_control_chars={stripped_chars} -> {args.output}",
+        f"build_appledict {__version__}: read={read} written={written} skipped={skipped} "
+        f"stripped_control_chars={stripped_chars} entries_with_audio={audio_used} "
+        f"-> {args.output}",
         file=sys.stderr,
     )
     return 0

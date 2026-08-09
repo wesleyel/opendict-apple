@@ -81,6 +81,38 @@ make clean
 `TAG=v2.0` selects the upstream release; `SOURCE=` overrides the input path;
 `DDK=` overrides the kit location.
 
+## Audio variant
+
+The same dictionary with pronunciation recordings inside the bundle. It is a
+separate build because fetching the clips takes hours and ~1.4 GB, and a
+separate release asset because that weight has no business in the default
+install. Both variants compile to the same bundle identity, so a user installs
+one or the other — the casks declare `conflicts_with`.
+
+```bash
+make audio                 # download every clip (hours, resumable)
+make audio LIMIT=200       # trial run
+make dict-audio            # convert with the manifest, compile, verify
+make zip-audio             # OpenDictionary-audio.dictionary.zip + sha256
+make install-audio
+make clean-audio           # drop the clip cache (expensive to rebuild)
+```
+
+`ACCENTS=us` fetches American only, roughly a third of the full size.
+`make audio` is resumable: it skips clips already on disk and headwords already
+recorded as having no recording, so rerun it after an interrupt rather than
+starting over. `AUDIO_DIR=` moves the cache off the repo.
+
+The clip tree reaches the DDK as `OtherResources`, which `build_dict.sh`
+resolves against its **working directory** with no flag to override. So the
+audio build runs from `build/audio/`, where `OtherResources` is a symlink to
+the cache. The plain build has no such directory, which is what keeps the two
+variants from contaminating each other — `make test --build` asserts both
+halves of that.
+
+CI runs this as a separate manually-triggered workflow, `build-audio`; see
+[ci.md](ci.md).
+
 ## Converter options
 
 ```bash
@@ -88,11 +120,30 @@ python3 src/build_appledict.py distribution.jsonl.gz -o OpenDictionary.xml \
   --source-tag v2.0 \        # shown on the attribution front matter page
   --min-priority common \    # drop `rare` senses (default: keep everything)
   --limit 500 \              # trial builds
+  --audio-manifest audio_files/manifest.tsv \   # bundled audio variant
   --no-front-matter          # only for tests; see LICENSE-DATA.md
 ```
 
 `--inspect` prints the first row's raw JSON and exits — use it whenever an
-upstream release changes shape.
+upstream release changes shape. `--version` prints the converter version, which
+is also stamped into an XML comment, the front matter page and the run summary.
+
+## Fetching audio
+
+```bash
+python3 scripts/fetch_audio.py distribution.jsonl.gz --out audio_files \
+  --accents uk,us \          # or just us
+  --workers 8 \              # concurrent requests
+  --delay 0.05 \             # pause per request, per worker
+  --limit 200 \              # trial runs
+  --retry-misses             # re-request headwords previously found to have none
+```
+
+Roughly a third of headwords have no recording at all; the source signals that
+with a deterministic HTTP 500, which is recorded in `misses.txt` and not
+retried. Transient failures (timeouts, 429, 503) are retried with a widening
+pause. See [format.md](format.md#pronunciation-audio) for the file layout and
+the manifest contract.
 
 ## Troubleshooting
 
@@ -126,6 +177,18 @@ cascade from the first one, not a separate problem.
 ```bash
 xattr -dr com.apple.quarantine 'Open Dictionary.dictionary'
 ```
+
+**`cp: invalid option -- 'X'` during the audio build.** `build_dict.sh` copies
+`OtherResources` with `cp -XRf`, and `-X` is BSD-only, so a GNU `cp` from
+coreutils earlier in `PATH` aborts the build. The Makefile and the smoke test
+pin `PATH=/usr/bin:/bin:/usr/sbin:/sbin` around the DDK for that reason; a
+hand-run `build_dict.sh` needs the same.
+
+**Play buttons do nothing.** Expected in the three-finger lookup popover — it
+does not run JavaScript. Inside Dictionary.app they should work; if they do not,
+check that clips actually reached the bundle (`make verify-audio` counts them).
+A bundle built without `OtherResources` still renders buttons, because the
+markup comes from the manifest, not from the files.
 
 ## Scale note
 

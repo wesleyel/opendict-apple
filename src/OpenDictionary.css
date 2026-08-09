@@ -8,6 +8,36 @@ d|entry {
 h1.hw {
 	font-size: 1.5em;
 	margin: 0 0 .2em 0;
+	display: inline-block;
+	margin-right: .5em;
+}
+
+/* Sits on the headword line; .summary below is a block and wraps to its own. */
+.audio {
+	display: inline-block;
+	vertical-align: .18em;
+}
+
+a.say {
+	display: inline-block;
+	text-decoration: none;
+	font-size: .78em;
+	line-height: 1.5;
+	padding: 0 .45em;
+	margin-right: .3em;
+	border: 1px solid rgba(0, 0, 0, .18);
+	border-radius: 10px;
+	color: #0b6cbf;
+	background: rgba(0, 0, 0, .03);
+	white-space: nowrap;
+}
+
+a.say:hover {
+	background: rgba(11, 108, 191, .12);
+}
+
+a.say .ico {
+	margin-right: .15em;
 }
 
 .summary {
@@ -149,6 +179,8 @@ ul.examples li {
 
 @media (prefers-color-scheme: dark) {
 	.summary { color: #bbb; }
+	a.say { color: #6cb6ff; border-color: rgba(255, 255, 255, .22); background: rgba(255, 255, 255, .06); }
+	a.say:hover { background: rgba(108, 182, 255, .18); }
 	.label { color: #e0b040; }
 	h2.pos { color: #6cb6ff; border-bottom-color: rgba(255, 255, 255, .15); }
 	.pron, .possum, .usage { color: #b8b8b8; }

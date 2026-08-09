@@ -15,3 +15,11 @@ SHA256SUMS.txt
 __pycache__/
 *.pyc
 .DS_Store
+
+# Audio variant: clip cache, staging and build output
+audio_files/
+objects-audio/
+build/
+OpenDictionaryAudio.xml
+OpenDictionaryAudio.xml.gz
+OpenDictionary-audio.dictionary.zip

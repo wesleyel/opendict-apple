@@ -1,0 +1,246 @@
+name: build-audio
+
+# The audio variant is a separate pipeline on purpose: fetching ~110k clips
+# takes hours and ~1.4 GB, which has no business running on every push. Trigger
+# it by hand when the upstream data changes.
+on:
+  workflow_dispatch:
+    inputs:
+      source_tag:
+        description: "ahpxex/open-dictionary release tag to build from"
+        default: "v2.0"
+      accents:
+        description: "Accents to bundle (uk,us | us | uk)"
+        default: "uk,us"
+      limit:
+        description: "Headword cap for trial runs (0 = all ~84k)"
+        default: "0"
+      publish:
+        description: "Create a release and update the Homebrew cask"
+        type: boolean
+        default: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  DICT_NAME: Open Dictionary
+  SOURCE_TAG: ${{ inputs.source_tag }}
+  ZIP: OpenDictionary-audio.dictionary.zip
+
+jobs:
+  # Network-bound, so it runs on the cheap runner. The clip cache is what makes
+  # a re-run survivable: a cold fetch is hours, a warm one is minutes.
+  audio:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get install -y --no-install-recommends libxml2-utils
+
+      - name: Cache upstream artifact
+        id: cache-src
+        uses: actions/cache@v4
+        with:
+          path: distribution.jsonl.gz
+          key: opendict-${{ env.SOURCE_TAG }}
+
+      - name: Download and verify distribution.jsonl.gz
+        if: steps.cache-src.outputs.cache-hit != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$SOURCE_TAG" --repo ahpxex/open-dictionary \
+            --pattern 'distribution.jsonl.gz' --pattern 'SHA256SUMS.txt'
+          grep 'distribution.jsonl.gz' SHA256SUMS.txt | sha256sum -c -
+
+      # restore-keys lets an interrupted run pick up where the last one stopped
+      # rather than re-requesting everything from the source.
+      - name: Cache pronunciation clips
+        uses: actions/cache@v4
+        with:
+          path: audio_files
+          key: audio-${{ env.SOURCE_TAG }}-${{ inputs.accents }}-${{ github.run_id }}
+          restore-keys: |
+            audio-${{ env.SOURCE_TAG }}-${{ inputs.accents }}-
+            audio-${{ env.SOURCE_TAG }}-
+
+      - name: Fetch clips
+        run: |
+          python3 scripts/fetch_audio.py distribution.jsonl.gz \
+            --out audio_files --accents '${{ inputs.accents }}' \
+            ${{ inputs.limit != '0' && format('--limit {0}', inputs.limit) || '' }}
+          echo "clips: $(find audio_files/OtherResources -name '*.mp3' | wc -l)"
+          du -sh audio_files
+
+      - name: Convert JSONL to Apple Dictionary XML
+        run: |
+          python3 src/build_appledict.py distribution.jsonl.gz -o OpenDictionaryAudio.xml \
+            --source-tag "$SOURCE_TAG" --audio-manifest audio_files/manifest.tsv \
+            ${{ inputs.limit != '0' && format('--limit {0}', inputs.limit) || '' }}
+          xmllint --noout OpenDictionaryAudio.xml
+          gzip -6 OpenDictionaryAudio.xml
+
+      # Only OtherResources/ ships; the manifest lives beside it precisely so
+      # this step cannot leak build bookkeeping into a user's bundle.
+      - name: Stage bundle resources
+        run: tar -cf audio-resources.tar -C audio_files/OtherResources Audio
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: audio-resources
+          path: |
+            audio-resources.tar
+            OpenDictionaryAudio.xml.gz
+          retention-days: 1
+          compression-level: 0  # mp3 does not compress; skip the CPU burn
+
+  package:
+    needs: audio
+    runs-on: macos-latest
+    timeout-minutes: 350
+    outputs:
+      sha256: ${{ steps.checksum.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: audio-resources
+      - uses: actions/checkout@v4
+        with:
+          repository: nanoskript/dictionary-development-kit
+          path: ddk
+
+      - name: Unpack inputs
+        run: |
+          gunzip OpenDictionaryAudio.xml.gz
+          mkdir -p stage/OtherResources
+          tar -xf audio-resources.tar -C stage/OtherResources
+          echo "clips: $(find stage/OtherResources/Audio -name '*.mp3' | wc -l)"
+
+      # build_dict.sh resolves OtherResources against its working directory and
+      # offers no flag for it, hence the staging dir.
+      - name: Compile .dictionary bundle
+        run: |
+          chmod +x ddk/bin/*
+          cd stage
+          DICT_DEV_KIT_OBJ_DIR="$PWD/../objects" \
+            ../ddk/bin/build_dict.sh -v 10.11 "$DICT_NAME" ../OpenDictionaryAudio.xml \
+              ../src/OpenDictionary.css ../src/OpenDictionary.plist
+
+      - name: Verify bundle
+        run: |
+          C="objects/$DICT_NAME.dictionary/Contents"
+          for f in Info.plist Resources/Body.data Resources/KeyText.data \
+                   Resources/KeyText.index Resources/EntryID.index \
+                   Resources/DefaultStyle.css; do
+            test -s "$C/$f" || { echo "missing $f"; exit 1; }
+          done
+          plutil -lint "$C/Info.plist"
+          grep -q front_back_matter "$C/Info.plist" || { echo "attribution front matter lost"; exit 1; }
+          clips=$(find "$C/Resources/Audio" -name '*.mp3' | wc -l | tr -d ' ')
+          test "$clips" -gt 0 || { echo "no clips in the bundle"; exit 1; }
+          echo "bundled clips: $clips"
+          du -sh "objects/$DICT_NAME.dictionary"
+
+      - name: Zip and checksum
+        id: checksum
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent \
+            "objects/$DICT_NAME.dictionary" "$ZIP"
+          sum=$(shasum -a 256 "$ZIP" | cut -d' ' -f1)
+          echo "sha256=$sum" >> "$GITHUB_OUTPUT"
+          echo "$sum  $ZIP" > SHA256SUMS-audio.txt
+          ls -lh "$ZIP"
+          # A release asset is capped at 2 GB; fail here rather than at upload.
+          size=$(stat -f%z "$ZIP")
+          test "$size" -lt 2000000000 || { echo "asset exceeds the 2 GB release limit"; exit 1; }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenDictionary-audio.dictionary
+          path: |
+            OpenDictionary-audio.dictionary.zip
+            SHA256SUMS-audio.txt
+          compression-level: 0
+
+  publish:
+    if: inputs.publish
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: OpenDictionary-audio.dictionary
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA256: ${{ needs.package.outputs.sha256 }}
+          REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          tag="appledict-$SOURCE_TAG"
+          notes=$(mktemp)
+          cat > "$notes" <<EOF
+          Apple Dictionary build of \`$SOURCE_TAG\` from
+          https://github.com/ahpxex/open-dictionary
+
+          Two variants, same dictionary — install one or the other:
+
+          \`\`\`
+          brew tap $OWNER/dict https://github.com/$REPO
+          brew install --cask open-dictionary         # ~90 MB, no audio
+          brew install --cask open-dictionary-audio   # with bundled pronunciation
+          \`\`\`
+
+          The audio variant carries US/UK recordings inside the bundle, so
+          playback works offline. Dictionary.app's entry view has no network
+          access, which is why the clips ship with it rather than streaming.
+          Pronunciation buttons need JavaScript, which Dictionary.app has but
+          the three-finger lookup popover does not — audio plays in the app.
+
+          sha256: \`$SHA256\`
+
+          Dictionary data is licensed CC BY-SA 4.0 and derives from Wiktionary;
+          redistribution must keep the attribution and the same licence.
+          See LICENSE-DATA.md. Audio is sourced from Youdao's pronunciation
+          endpoint and remains the property of its provider.
+          EOF
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "$ZIP" SHA256SUMS-audio.txt --clobber
+            gh release edit "$tag" --notes-file "$notes"
+          else
+            gh release create "$tag" --title "Apple Dictionary $SOURCE_TAG" \
+              --notes-file "$notes" "$ZIP" SHA256SUMS-audio.txt
+          fi
+
+      - name: Update Homebrew cask
+        env:
+          SHA256: ${{ needs.package.outputs.sha256 }}
+        run: |
+          python3 scripts/update_cask.py --variant audio \
+            --repo "${{ github.repository }}" \
+            --version "${SOURCE_TAG#v}" \
+            --sha256 "$SHA256"
+
+      - name: Commit cask
+        run: |
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add Casks/open-dictionary-audio.rb
+          git diff --staged --quiet && exit 0
+          git commit -m "cask: open-dictionary-audio ${SOURCE_TAG#v}"
+          git push
