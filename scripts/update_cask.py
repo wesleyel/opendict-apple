@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Regenerate open-dictionary.rb (and the audio variant) for wesleyel/homebrew-tap.
+"""Seed open-dictionary.rb (and the audio variant) for wesleyel/homebrew-tap.
 
-The cask is generated rather than hand-edited so the release tag, version and
-checksum can never drift apart. The publish job writes into a checkout of
-wesleyel/homebrew-tap via --output.
+Day-to-day version bumps are Renovate PRs on the tap; this script is only for
+creating or reshaping a cask. Write into a tap checkout with --output.
 
 Both variants install to the same path under ~/Library/Dictionaries, so they
 declare each other in conflicts_with: they are alternatives, not companions.

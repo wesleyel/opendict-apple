@@ -13,7 +13,7 @@ on:
         description: "Entry cap for trial builds (0 = all ~84k)"
         default: "0"
       publish:
-        description: "Create a release and update the Homebrew cask"
+        description: "Create a GitHub release (tap is updated by Renovate)"
         type: boolean
         default: false
 
@@ -211,31 +211,3 @@ jobs:
             gh release create "$tag" --title "Apple Dictionary $SOURCE_TAG" \
               --notes-file notes.md OpenDictionary.dictionary.zip SHA256SUMS.txt
           fi
-
-      - name: Check out the tap
-        uses: actions/checkout@v4
-        with:
-          repository: wesleyel/homebrew-tap
-          token: ${{ secrets.TAP_GITHUB_TOKEN }}
-          path: tap
-
-      - name: Update Homebrew cask
-        env:
-          SHA256: ${{ needs.package.outputs.sha256 }}
-        run: |
-          mkdir -p tap/Casks
-          python3 scripts/update_cask.py \
-            --repo "${{ github.repository }}" \
-            --version "${SOURCE_TAG#v}" \
-            --sha256 "$SHA256" \
-            -o tap/Casks/open-dictionary.rb
-
-      - name: Commit cask
-        working-directory: tap
-        run: |
-          git config user.name  'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add Casks/open-dictionary.rb
-          git diff --staged --quiet && exit 0
-          git commit -m "open-dictionary ${SOURCE_TAG#v}"
-          git push

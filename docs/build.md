@@ -4,7 +4,7 @@
 
 ```
 src/        inputs to the DDK compile: converter, CSS, plist
-scripts/    auxiliary tooling (cask generator; output goes to wesleyel/homebrew-tap)
+scripts/    auxiliary tooling (optional cask seeder for wesleyel/homebrew-tap)
 tests/      fixture + smoke test
 docs/       this
 ddk/        Dictionary Development Kit, cloned on demand, gitignored
