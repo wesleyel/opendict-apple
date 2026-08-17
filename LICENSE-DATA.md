@@ -5,7 +5,7 @@ redistributing a built `.dictionary` bundle.
 
 ## 1. Conversion tooling — MIT
 
-`src/build_appledict.py`, `Makefile`, `Casks/`, the workflow, the CSS and the plist
+`src/build_appledict.py`, `Makefile`, `scripts/update_cask.py`, the workflow, the CSS and the plist
 are MIT licensed. See [LICENSE](LICENSE).
 
 ## 2. Dictionary data — CC BY-SA 4.0

@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
-"""Regenerate Casks/open-dictionary.rb (and the audio variant).
+"""Regenerate open-dictionary.rb (and the audio variant) for wesleyel/homebrew-tap.
 
 The cask is generated rather than hand-edited so the release tag, version and
-checksum can never drift apart. CI runs this after uploading the release asset.
+checksum can never drift apart. The publish job writes into a checkout of
+wesleyel/homebrew-tap via --output.
 
 Both variants install to the same path under ~/Library/Dictionaries, so they
 declare each other in conflicts_with: they are alternatives, not companions.
 
-  python3 scripts/update_cask.py --repo owner/name --version 2.0 --sha256 <hex>
+  python3 scripts/update_cask.py --repo owner/name --version 2.0 --sha256 <hex> \\
+      -o /path/to/homebrew-tap/Casks/open-dictionary.rb
   python3 scripts/update_cask.py --variant audio --repo owner/name \\
-      --version 2.0 --asset OpenDictionary-audio.dictionary.zip
+      --version 2.0 --asset OpenDictionary-audio.dictionary.zip \\
+      -o /path/to/homebrew-tap/Casks/open-dictionary-audio.rb
 """
 
 from __future__ import annotations
@@ -37,9 +40,8 @@ cask "{token}" do
     strategy :github_latest
   end
 
-  depends_on macos: :catalina
-
   conflicts_with cask: "{conflicts}"
+  depends_on macos: :catalina
 
   dictionary "Open Dictionary.dictionary"
 
@@ -68,7 +70,7 @@ VARIANTS = {
         "asset": "OpenDictionary-audio.dictionary.zip",
         "name_suffix": " with Audio",
         "cn_suffix": "（含发音）",
-        "desc": "English-Chinese learner dictionary for Dictionary.app, with bundled pronunciation",
+        "desc": "English-Chinese learner dictionary for Dictionary.app with bundled pronunciation",
         "conflicts": "open-dictionary",
         "audio_caveat": (
             "\n\n    Pronunciation clips are bundled, so playback works offline. The\n"

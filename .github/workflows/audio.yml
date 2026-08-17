@@ -212,9 +212,9 @@ jobs:
           Two variants, same dictionary — install one or the other:
 
           \`\`\`
-          brew tap $OWNER/dict https://github.com/$REPO
-          brew install --cask open-dictionary         # ~90 MB, no audio
-          brew install --cask open-dictionary-audio   # with bundled pronunciation
+          brew tap $OWNER/tap
+          brew install --cask $OWNER/tap/open-dictionary         # ~90 MB, no audio
+          brew install --cask $OWNER/tap/open-dictionary-audio   # with bundled pronunciation
           \`\`\`
 
           The audio variant carries US/UK recordings inside the bundle, so
@@ -238,20 +238,30 @@ jobs:
               --notes-file "$notes" "$ZIP" SHA256SUMS-audio.txt
           fi
 
+      - name: Check out the tap
+        uses: actions/checkout@v4
+        with:
+          repository: wesleyel/homebrew-tap
+          token: ${{ secrets.TAP_GITHUB_TOKEN }}
+          path: tap
+
       - name: Update Homebrew cask
         env:
           SHA256: ${{ needs.package.outputs.sha256 }}
         run: |
+          mkdir -p tap/Casks
           python3 scripts/update_cask.py --variant audio \
             --repo "${{ github.repository }}" \
             --version "${SOURCE_TAG#v}" \
-            --sha256 "$SHA256"
+            --sha256 "$SHA256" \
+            -o tap/Casks/open-dictionary-audio.rb
 
       - name: Commit cask
+        working-directory: tap
         run: |
           git config user.name  'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add Casks/open-dictionary-audio.rb
           git diff --staged --quiet && exit 0
-          git commit -m "cask: open-dictionary-audio ${SOURCE_TAG#v}"
+          git commit -m "open-dictionary-audio ${SOURCE_TAG#v}"
           git push

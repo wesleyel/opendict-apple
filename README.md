@@ -11,9 +11,15 @@
 两个版本，同一本词典，二选一：
 
 ```bash
-brew tap wesleyel/dict https://github.com/wesleyel/opendict-apple
-brew install --cask open-dictionary         # ~90 MB，不含发音
-brew install --cask open-dictionary-audio   # 打包英美发音，离线可用
+brew tap wesleyel/tap
+brew install --cask wesleyel/tap/open-dictionary         # ~90 MB，不含发音
+brew install --cask wesleyel/tap/open-dictionary-audio   # 打包英美发音，离线可用
+```
+
+以前把本仓库当 tap 用的话，先卸掉旧 tap：
+
+```bash
+brew untap wesleyel/dict
 ```
 
 装完在 **词典.app → 设置** 里勾选 *Open Dictionary* 启用。
