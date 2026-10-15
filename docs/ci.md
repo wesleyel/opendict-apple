@@ -11,7 +11,7 @@ runs on Linux.
 | `smoke` | macos | push to `main`, manual | same fixture, compiled with the real DDK |
 | `convert` | ubuntu | manual | download + verify upstream, JSONL → XML |
 | `package` | macos | after `convert` | compile, verify bundle, zip, checksum |
-| `publish` | ubuntu | manual, `publish: true` | GitHub release + SHA256SUMS (tap is updated by Renovate) |
+| `publish` | ubuntu | manual, `publish: true` | GitHub release + SHA256SUMS, then updates the tap cask |
 
 ## Running a build
 
@@ -21,7 +21,7 @@ Actions → **build** → Run workflow:
 |---|---|
 | `source_tag` | upstream release tag, default `v2.0` |
 | `limit` | entry cap for trial builds, `0` = all |
-| `publish` | create the GitHub release; Renovate opens a tap PR |
+| `publish` | create the GitHub release and update the tap cask |
 
 Start with `limit: 500, publish: false` after any converter change.
 
@@ -39,11 +39,12 @@ is verified on every fresh download.
 **`package` has `timeout-minutes: 240`.** The DDK is single-threaded and the
 full corpus is large; this is headroom, not an estimate.
 
-**`publish` only writes the GitHub release on this repo** (zip + `SHA256SUMS.txt`).
-The Homebrew cask lives in [wesleyel/homebrew-tap](https://github.com/wesleyel/homebrew-tap):
-Renovate opens a version PR, and the tap CI copies the checksum from
-`SHA256SUMS.txt` then merges. This workflow does not need `TAP_GITHUB_TOKEN`.
-Every job other than `publish` stays read-only.
+**`publish` writes the GitHub release, then the cask.** After uploading the zip
+and `SHA256SUMS.txt`, it runs `scripts/update-tap-cask.sh`, which sets `version`
+and `sha256` in the cask in [wesleyel/homebrew-tap](https://github.com/wesleyel/homebrew-tap)
+and pushes to its `main`. That step needs the `HOMEBREW_TAP_GITHUB_TOKEN` secret
+(fine-grained, contents write on the tap). Every job other than `publish` stays
+read-only.
 
 ## The audio workflow
 
@@ -61,7 +62,7 @@ Every job other than `publish` stays read-only.
 | `source_tag` | upstream release tag |
 | `accents` | `uk,us` (default), or one of them |
 | `limit` | headword cap for trial runs, `0` = all |
-| `publish` | create the release asset; Renovate opens a tap PR |
+| `publish` | create the release asset and update the tap cask |
 
 Start with `limit: 200, publish: false`.
 
@@ -84,16 +85,17 @@ content — shipping it would add ~7 MB of index to every install.
 ## The cask
 
 Casks live in [wesleyel/homebrew-tap](https://github.com/wesleyel/homebrew-tap),
-not in this repo. After a release lands, Renovate opens a PR there; tap CI
-reads `SHA256SUMS.txt` / `SHA256SUMS-audio.txt` from this release, writes the
-checksum, audits, and merges. `--variant audio` is a separate cask:
+not in this repo. Each `publish` job writes its own cask with
+`scripts/update-tap-cask.sh <cask> <version> <SHA256SUMS file>`; the tap CI then
+audits it on push. Both workflows may publish at once, so the script rebases and
+retries the push. `--variant audio` is a separate cask:
 both variants install the same bundle path, so they declare each other in
 `conflicts_with` and a user picks one.
 
 Homebrew's `dictionary` stanza installs into `~/Library/Dictionaries`
 (`dictionarydir`) and handles uninstall, so no custom `zap` is needed.
 
-`scripts/update_cask.py` is only for seeding a new cask by hand:
+`scripts/update_cask.py` only seeds a new cask by hand (releases use `update-tap-cask.sh`):
 
 ```bash
 python3 scripts/update_cask.py --repo owner/name --version 2.0 \

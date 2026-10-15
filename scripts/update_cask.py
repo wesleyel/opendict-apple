@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Seed open-dictionary.rb (and the audio variant) for wesleyel/homebrew-tap.
 
-Day-to-day version bumps are Renovate PRs on the tap; this script is only for
-creating or reshaping a cask. Write into a tap checkout with --output.
+Day-to-day version bumps are done by scripts/update-tap-cask.sh from the publish
+jobs; this script is only for creating or reshaping a cask. Write into a tap checkout with --output.
 
 Both variants install to the same path under ~/Library/Dictionaries, so they
 declare each other in conflicts_with: they are alternatives, not companions.
@@ -26,8 +26,7 @@ cask "{token}" do
   version "{version}"
   sha256 "{sha256}"
 
-  url "https://github.com/{repo}/releases/download/appledict-v#{{version}}/{asset}",
-      verified: "github.com/{repo}/"
+  url "https://github.com/{repo}/releases/download/appledict-v#{{version}}/{asset}"
   name "Open Dictionary{name_suffix}"
   name "Open Dictionary 英汉学习词典{cn_suffix}"
   desc "{desc}"
@@ -40,7 +39,7 @@ cask "{token}" do
   end
 
   conflicts_with cask: "{conflicts}"
-  depends_on macos: :catalina
+  depends_on :macos
 
   dictionary "Open Dictionary.dictionary"
 

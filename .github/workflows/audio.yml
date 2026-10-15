@@ -16,7 +16,7 @@ on:
         description: "Headword cap for trial runs (0 = all ~84k)"
         default: "0"
       publish:
-        description: "Create a GitHub release (tap is updated by Renovate)"
+        description: "Create a GitHub release and update the Homebrew cask in wesleyel/homebrew-tap"
         type: boolean
         default: false
 
@@ -237,3 +237,8 @@ jobs:
             gh release create "$tag" --title "Apple Dictionary $SOURCE_TAG" \
               --notes-file "$notes" "$ZIP" SHA256SUMS-audio.txt
           fi
+
+      - name: Update Homebrew cask
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+        run: scripts/update-tap-cask.sh open-dictionary-audio "${SOURCE_TAG#v}" SHA256SUMS-audio.txt
