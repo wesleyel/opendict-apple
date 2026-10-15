@@ -38,7 +38,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: python3 -m compileall -q src/build_appledict.py scripts/update_cask.py scripts/fetch_audio.py
-      - run: sudo apt-get install -y --no-install-recommends libxml2-utils
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxml2-utils
       - run: tests/smoke.sh
 
   # Same fixture, but compiled with the real DDK. macOS minutes cost 10x on
@@ -66,7 +66,7 @@ jobs:
           python-version: "3.12"
 
       # xmllint is not part of the ubuntu-latest image.
-      - run: sudo apt-get install -y --no-install-recommends libxml2-utils
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxml2-utils
 
       - name: Cache upstream artifact
         id: cache-src
